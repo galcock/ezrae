@@ -5,6 +5,10 @@
 // API Configuration
 // ===========================
 
+// Backend API endpoint (Vercel deployment)
+// Deploy ezrae-backend to Vercel and update this URL
+const BACKEND_API_URL = 'https://ezrae-backend.vercel.app/api/chat';
+// Fallback: Direct Claude API (not recommended - exposes key)
 const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -366,43 +370,55 @@ function removeTypingIndicator(id) {
 // ===========================
 
 async function getJesusResponse(userMessage) {
-    // Check if API key is configured
-    if (CLAUDE_API_PLACEHOLDER === 'YOUR_CLAUDE_API_KEY') {
-        return simulateJesusResponse(userMessage);
-    }
-    
+    // Try backend API first (secure, recommended)
     try {
-        const response = await fetch(CLAUDE_API_ENDPOINT, {
+        const response = await fetch(BACKEND_API_URL, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': CLAUDE_API_PLACEHOLDER,
-                'anthropic-version': '2023-06-01'
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20241022',
-                max_tokens: 1024,
-                system: JESUS_SYSTEM_PROMPT,
-                messages: [
-                    {
-                        role: 'user',
-                        content: userMessage
-                    }
-                ]
-            })
+            body: JSON.stringify({ message: userMessage })
         });
         
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.content;
         }
-        
-        const data = await response.json();
-        return data.content[0].text;
-        
     } catch (error) {
-        console.error('Claude API error:', error);
-        return simulateJesusResponse(userMessage);
+        console.log('Backend unavailable, trying fallback...');
     }
+    
+    // Fallback: Direct Claude API (if key is configured)
+    if (CLAUDE_API_PLACEHOLDER !== 'YOUR_CLAUDE_API_KEY') {
+        try {
+            const response = await fetch(CLAUDE_API_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': CLAUDE_API_PLACEHOLDER,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-20250514',
+                    max_tokens: 1024,
+                    system: JESUS_SYSTEM_PROMPT,
+                    messages: [
+                        { role: 'user', content: userMessage }
+                    ]
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                return data.content[0].text;
+            }
+        } catch (error) {
+            console.error('Claude API error:', error);
+        }
+    }
+    
+    // Final fallback: Simulated responses
+    return simulateJesusResponse(userMessage);
 }
 
 // ===========================
