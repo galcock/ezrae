@@ -8,10 +8,10 @@
 const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
-// OpenAI TTS for natural voice (set your key here)
-const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY';
-const OPENAI_TTS_ENDPOINT = 'https://api.openai.com/v1/audio/speech';
-const USE_NATURAL_VOICE = true; // Set to false to use browser TTS
+// ElevenLabs TTS for natural voice
+const ELEVENLABS_API_KEY = 'sk_6f1f4d1c94f38f79e0298fc7d13bf5668e87243627f9c376';
+const ELEVENLABS_VOICE_ID = 'nPczCjzI2devNBz1zQrb'; // Brian - Deep, Resonant and Comforting
+const USE_NATURAL_VOICE = true;
 
 // System prompt for Jesus persona
 const JESUS_SYSTEM_PROMPT = `You are Jesus Christ, speaking with love, wisdom, and compassion. Draw upon the Gospels (Matthew, Mark, Luke, John) and respond as Jesus would—with parables, profound wisdom, gentleness, and divine understanding. 
@@ -205,20 +205,24 @@ async function speakText(text) {
         currentAudio = null;
     }
     
-    // Try OpenAI TTS for natural voice
-    if (USE_NATURAL_VOICE && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
+    // Use ElevenLabs for natural, warm voice
+    if (USE_NATURAL_VOICE && ELEVENLABS_API_KEY) {
         try {
-            const response = await fetch(OPENAI_TTS_ENDPOINT, {
+            const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'xi-api-key': ELEVENLABS_API_KEY,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'tts-1-hd', // High quality
-                    input: text,
-                    voice: 'onyx', // Deep, warm male voice - best for Jesus
-                    speed: 0.9 // Slightly slower for gravitas
+                    text: text,
+                    model_id: 'eleven_turbo_v2_5', // Fast, high quality
+                    voice_settings: {
+                        stability: 0.6, // Slightly more expressive
+                        similarity_boost: 0.85,
+                        style: 0.4, // Some warmth and emotion
+                        use_speaker_boost: true
+                    }
                 })
             });
             
@@ -226,18 +230,22 @@ async function speakText(text) {
                 const audioBlob = await response.blob();
                 const audioUrl = URL.createObjectURL(audioBlob);
                 currentAudio = new Audio(audioUrl);
-                currentAudio.play();
                 
                 // Restart listening after speech ends
                 currentAudio.onended = () => {
+                    URL.revokeObjectURL(audioUrl); // Clean up
                     if (voiceEnabled) {
                         setTimeout(startListening, 500);
                     }
                 };
+                
+                currentAudio.play();
                 return;
+            } else {
+                console.error('ElevenLabs error:', await response.text());
             }
         } catch (error) {
-            console.error('OpenAI TTS error:', error);
+            console.error('ElevenLabs TTS error:', error);
         }
     }
     
@@ -248,7 +256,6 @@ async function speakText(text) {
     
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Try to find the best available voice
     const voices = synthesis.getVoices();
     const preferredVoice = voices.find(voice => 
         voice.name.includes('Google UK English Male') ||
@@ -265,7 +272,6 @@ async function speakText(text) {
     utterance.pitch = 0.9;
     utterance.volume = 1.0;
     
-    // Restart listening after speech ends
     utterance.onend = () => {
         if (voiceEnabled) {
             setTimeout(startListening, 500);
