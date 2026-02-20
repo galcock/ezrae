@@ -48,9 +48,8 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     recognition.lang = 'en-US';
     
     recognition.onresult = (event) => {
-        // Get the latest result
         const lastResult = event.results[event.results.length - 1];
-        const transcript = lastResult[0].transcript;
+        const transcript = lastResult[0].transcript.trim();
         const input = document.getElementById('chatInput');
         
         // INTERRUPT: Stop Jesus if user starts speaking
@@ -58,20 +57,21 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             currentAudio.pause();
             currentAudio.currentTime = 0;
             currentAudio = null;
-            console.log('Interrupted Jesus - user speaking');
         }
         
-        // Update input field with transcript
-        input.value = transcript;
+        // Update input field
+        if (input) input.value = transcript;
         
-        // AUTO-SEND when speech is final
-        if (lastResult.isFinal && transcript.trim()) {
-            console.log('Final transcript, auto-sending:', transcript);
-            // Submit the form
-            const form = document.getElementById('chatForm');
-            if (form) {
-                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-            }
+        // AUTO-SEND: When speech is final and we have text, send it directly
+        if (lastResult.isFinal && transcript.length > 0) {
+            // Stop recognition briefly while processing
+            try { recognition.stop(); } catch(e) {}
+            
+            // Clear input and send message directly
+            if (input) input.value = '';
+            
+            // Call sendMessage directly (bypass form)
+            sendVoiceMessage(transcript);
         }
     };
     
@@ -289,11 +289,23 @@ async function handleChatSubmit(event) {
     
     if (!message) return;
     
+    // Clear input first
+    input.value = '';
+    
+    // Process the message
+    await processMessage(message);
+}
+
+// Direct voice message handler (bypasses form)
+async function sendVoiceMessage(message) {
+    if (!message || !message.trim()) return;
+    await processMessage(message.trim());
+}
+
+// Core message processing (used by both form and voice)
+async function processMessage(message) {
     // Add user message to chat
     addMessage(message, 'user');
-    
-    // Clear input
-    input.value = '';
     
     // Show typing indicator
     const typingId = addTypingIndicator();
@@ -308,14 +320,21 @@ async function handleChatSubmit(event) {
         // Add Jesus response
         addMessage(response, 'system');
         
-        // Speak response if voice is enabled
+        // Speak response if voice is enabled (ALWAYS use ElevenLabs)
         if (voiceEnabled) {
-            speakText(response);
+            await speakText(response);
         }
     } catch (error) {
         removeTypingIndicator(typingId);
         addMessage('Peace, my child. There seems to be a moment of silence. Please try again, and know that I am always listening.', 'system');
         console.error('Chat error:', error);
+        
+        // Restart listening after error
+        if (voiceEnabled && recognition) {
+            setTimeout(() => {
+                try { recognition.start(); } catch(e) {}
+            }, 1000);
+        }
     }
 }
 
