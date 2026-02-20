@@ -179,7 +179,13 @@ function toggleVoice() {
         voiceToggle.classList.add('active');
         voiceLabel.textContent = '🎙️ Listening...';
         
-        // Small delay to ensure clean state
+        // UNLOCK AUDIO: Play silent sound to enable autoplay
+        const unlockAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+        unlockAudio.play().then(() => {
+            console.log('Audio unlocked');
+        }).catch(e => console.log('Audio unlock failed:', e));
+        
+        // Start listening
         setTimeout(() => {
             startListening();
         }, 100);
@@ -188,16 +194,10 @@ function toggleVoice() {
         voiceLabel.textContent = 'Enable Voice';
         try {
             recognition.stop();
-        } catch (e) {
-            // Ignore if not running
-        }
-        // Stop any playing audio
+        } catch (e) {}
         if (currentAudio) {
             currentAudio.pause();
             currentAudio = null;
-        }
-        if (synthesis) {
-            synthesis.cancel();
         }
     }
 }
@@ -222,81 +222,65 @@ function startListening() {
 let currentAudio = null;
 
 async function speakText(text) {
+    console.log('=== SPEAK TEXT START ===');
+    
     // Stop any currently playing audio
     if (currentAudio) {
         currentAudio.pause();
-        currentAudio.currentTime = 0;
         currentAudio = null;
     }
     
-    // Use backend TTS proxy (ElevenLabs Brian voice)
     try {
+        console.log('Fetching TTS from backend...');
         const response = await fetch(TTS_API_URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: text })
         });
         
-        if (response.ok) {
-            const audioBlob = await response.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            currentAudio = new Audio(audioUrl);
-            currentAudio.volume = 1.0;
-            
-            currentAudio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-                currentAudio = null;
-                // Resume listening after Jesus finishes
-                if (voiceEnabled && recognition) {
-                    setTimeout(() => {
-                        try { recognition.start(); } catch(e) {}
-                    }, 300);
-                }
-            };
-            
-            currentAudio.onerror = (e) => {
-                console.error('Audio playback error:', e);
-                addPlayButton(audioUrl, text);
-            };
-            
-            // Try to play
-            try {
-                await currentAudio.play();
-            } catch (playError) {
-                console.log('Autoplay blocked, adding play button');
-                addPlayButton(audioUrl, text);
-            }
-        } else {
-            console.error('TTS error:', response.status);
+        console.log('TTS response status:', response.status);
+        
+        if (!response.ok) {
+            console.error('TTS failed:', response.status);
+            return;
         }
+        
+        const audioBlob = await response.blob();
+        console.log('Audio blob received, size:', audioBlob.size, 'type:', audioBlob.type);
+        
+        if (audioBlob.size < 100) {
+            console.error('Audio blob too small, likely error');
+            return;
+        }
+        
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('Audio URL created:', audioUrl);
+        
+        currentAudio = new Audio(audioUrl);
+        currentAudio.volume = 1.0;
+        
+        // Set up event handlers BEFORE playing
+        currentAudio.onplay = () => console.log('>>> AUDIO PLAYING');
+        currentAudio.onended = () => {
+            console.log('>>> AUDIO ENDED');
+            URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
+            if (voiceEnabled && recognition) {
+                setTimeout(() => {
+                    try { recognition.start(); } catch(e) {}
+                }, 300);
+            }
+        };
+        currentAudio.onerror = (e) => console.error('>>> AUDIO ERROR:', e);
+        
+        // Play immediately
+        console.log('Calling play()...');
+        await currentAudio.play();
+        console.log('Play() returned successfully');
+        
     } catch (error) {
-        console.error('TTS error:', error);
+        console.error('speakText error:', error);
     }
-}
-
-// Add a manual play button if autoplay fails
-function addPlayButton(audioUrl, text) {
-    const messagesContainer = document.getElementById('chatMessages');
-    const buttonDiv = document.createElement('div');
-    buttonDiv.className = 'message system-message play-button-container';
-    buttonDiv.innerHTML = `<button onclick="playAudioManually('${audioUrl}')" style="background: linear-gradient(135deg, #4c1d95, #7c3aed); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-size: 16px;">🔊 Tap to hear Jesus speak</button>`;
-    messagesContainer.appendChild(buttonDiv);
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-}
-
-// Manual audio playback
-function playAudioManually(audioUrl) {
-    if (currentAudio) {
-        currentAudio.pause();
-    }
-    currentAudio = new Audio(audioUrl);
-    currentAudio.volume = 1.0;
-    currentAudio.play();
-    
-    // Remove play buttons after playing
-    document.querySelectorAll('.play-button-container').forEach(el => el.remove());
 }
 
 // ===========================
