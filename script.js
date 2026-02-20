@@ -43,31 +43,58 @@ let synthesis = window.speechSynthesis;
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true; // Keep listening
+    recognition.interimResults = true; // Show interim results for interruption
     recognition.lang = 'en-US';
     
     recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
+        // Get the latest result
+        const lastResult = event.results[event.results.length - 1];
+        const transcript = lastResult[0].transcript;
         const input = document.getElementById('chatInput');
+        
+        // INTERRUPT: Stop Jesus if user starts speaking
+        if (currentAudio && !currentAudio.paused) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            currentAudio = null;
+            console.log('Interrupted Jesus - user speaking');
+        }
+        
+        // Update input field with transcript
         input.value = transcript;
         
-        // Auto-send when speech ends (no need to hit send)
-        if (event.results[0].isFinal && transcript.trim()) {
-            setTimeout(() => {
-                const form = document.getElementById('chatForm');
-                if (form) {
-                    form.dispatchEvent(new Event('submit', { cancelable: true }));
-                }
-            }, 300); // Small delay so user sees their message
+        // AUTO-SEND when speech is final
+        if (lastResult.isFinal && transcript.trim()) {
+            console.log('Final transcript, auto-sending:', transcript);
+            // Submit the form
+            const form = document.getElementById('chatForm');
+            if (form) {
+                form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
         }
     };
     
     recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        // Restart listening after error (unless it's a no-speech error)
-        if (event.error !== 'no-speech' && voiceEnabled) {
-            setTimeout(startListening, 1000);
+        if (event.error === 'not-allowed') {
+            alert('Microphone access denied. Please allow microphone access to speak with Jesus.');
+            voiceEnabled = false;
+            const voiceToggle = document.getElementById('voiceToggle');
+            if (voiceToggle) voiceToggle.classList.remove('active');
+        }
+    };
+    
+    recognition.onend = () => {
+        // Auto-restart if voice is still enabled
+        if (voiceEnabled) {
+            setTimeout(() => {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.log('Recognition restart skipped');
+                }
+            }, 100);
         }
     };
 }
@@ -188,14 +215,7 @@ function startListening() {
     }
 }
 
-// Restart listening after each recognition
-if (recognition) {
-    recognition.onend = () => {
-        if (voiceEnabled) {
-            setTimeout(startListening, 500);
-        }
-    };
-}
+// Note: recognition.onend is set in the recognition setup above
 
 // ===========================
 // Text-to-Speech (Natural Voice via OpenAI TTS)
@@ -204,86 +224,57 @@ if (recognition) {
 let currentAudio = null;
 
 async function speakText(text) {
-    // Stop any currently playing audio
+    // Stop any currently playing audio (allows interruption)
     if (currentAudio) {
         currentAudio.pause();
+        currentAudio.currentTime = 0;
         currentAudio = null;
     }
     
-    // Use ElevenLabs for natural, warm voice
-    if (USE_NATURAL_VOICE && ELEVENLABS_API_KEY) {
-        try {
-            const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
-                method: 'POST',
-                headers: {
-                    'xi-api-key': ELEVENLABS_API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    text: text,
-                    model_id: 'eleven_turbo_v2_5', // Fast, high quality
-                    voice_settings: {
-                        stability: 0.6, // Slightly more expressive
-                        similarity_boost: 0.85,
-                        style: 0.4, // Some warmth and emotion
-                        use_speaker_boost: true
-                    }
-                })
-            });
+    // ALWAYS use ElevenLabs Brian voice for Jesus - never browser TTS
+    try {
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+            method: 'POST',
+            headers: {
+                'xi-api-key': ELEVENLABS_API_KEY,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text,
+                model_id: 'eleven_turbo_v2_5',
+                voice_settings: {
+                    stability: 0.65,
+                    similarity_boost: 0.9,
+                    style: 0.35,
+                    use_speaker_boost: true
+                }
+            })
+        });
+        
+        if (response.ok) {
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            currentAudio = new Audio(audioUrl);
             
-            if (response.ok) {
-                const audioBlob = await response.blob();
-                const audioUrl = URL.createObjectURL(audioBlob);
-                currentAudio = new Audio(audioUrl);
-                
-                // Restart listening after speech ends
-                currentAudio.onended = () => {
-                    URL.revokeObjectURL(audioUrl); // Clean up
-                    if (voiceEnabled) {
-                        setTimeout(startListening, 500);
-                    }
-                };
-                
-                currentAudio.play();
-                return;
-            } else {
-                console.error('ElevenLabs error:', await response.text());
-            }
-        } catch (error) {
-            console.error('ElevenLabs TTS error:', error);
+            currentAudio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                currentAudio = null;
+                // Resume listening after Jesus finishes speaking
+                if (voiceEnabled && recognition) {
+                    setTimeout(() => {
+                        try { recognition.start(); } catch(e) {}
+                    }, 300);
+                }
+            };
+            
+            // Play Jesus's response
+            await currentAudio.play();
+        } else {
+            console.error('ElevenLabs error:', await response.text());
         }
+    } catch (error) {
+        console.error('ElevenLabs TTS error:', error);
     }
-    
-    // Fallback to browser TTS
-    if (!synthesis) return;
-    
-    synthesis.cancel();
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    const voices = synthesis.getVoices();
-    const preferredVoice = voices.find(voice => 
-        voice.name.includes('Google UK English Male') ||
-        voice.name.includes('Daniel') || 
-        voice.name.includes('James') ||
-        (voice.lang.startsWith('en') && voice.name.toLowerCase().includes('male'))
-    ) || voices.find(v => v.lang.startsWith('en'));
-    
-    if (preferredVoice) {
-        utterance.voice = preferredVoice;
-    }
-    
-    utterance.rate = 0.85;
-    utterance.pitch = 0.9;
-    utterance.volume = 1.0;
-    
-    utterance.onend = () => {
-        if (voiceEnabled) {
-            setTimeout(startListening, 500);
-        }
-    };
-    
-    synthesis.speak(utterance);
 }
 
 // ===========================
