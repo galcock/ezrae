@@ -1,0 +1,26 @@
+{
+  "name": "Ezrae - The Way, Illuminated",
+  "short_name": "Ezrae",
+  "description": "AI-powered spiritual guidance based on the teachings of Jesus Christ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0a1a",
+  "theme_color": "#4c1d95",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["lifestyle", "spirituality", "religion"],
+  "lang": "en-US",
+  "dir": "ltr"
+}
