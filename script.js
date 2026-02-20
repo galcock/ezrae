@@ -222,8 +222,6 @@ function startListening() {
 let currentAudio = null;
 
 async function speakText(text) {
-    console.log('speakText called');
-    
     // Stop any currently playing audio
     if (currentAudio) {
         currentAudio.pause();
@@ -259,21 +257,46 @@ async function speakText(text) {
             };
             
             currentAudio.onerror = (e) => {
-                console.error('Audio error:', e);
-                if (voiceEnabled && recognition) {
-                    setTimeout(() => {
-                        try { recognition.start(); } catch(e) {}
-                    }, 500);
-                }
+                console.error('Audio playback error:', e);
+                addPlayButton(audioUrl, text);
             };
             
-            await currentAudio.play();
+            // Try to play
+            try {
+                await currentAudio.play();
+            } catch (playError) {
+                console.log('Autoplay blocked, adding play button');
+                addPlayButton(audioUrl, text);
+            }
         } else {
             console.error('TTS error:', response.status);
         }
     } catch (error) {
         console.error('TTS error:', error);
     }
+}
+
+// Add a manual play button if autoplay fails
+function addPlayButton(audioUrl, text) {
+    const messagesContainer = document.getElementById('chatMessages');
+    const buttonDiv = document.createElement('div');
+    buttonDiv.className = 'message system-message play-button-container';
+    buttonDiv.innerHTML = `<button onclick="playAudioManually('${audioUrl}')" style="background: linear-gradient(135deg, #4c1d95, #7c3aed); color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-size: 16px;">🔊 Tap to hear Jesus speak</button>`;
+    messagesContainer.appendChild(buttonDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Manual audio playback
+function playAudioManually(audioUrl) {
+    if (currentAudio) {
+        currentAudio.pause();
+    }
+    currentAudio = new Audio(audioUrl);
+    currentAudio.volume = 1.0;
+    currentAudio.play();
+    
+    // Remove play buttons after playing
+    document.querySelectorAll('.play-button-container').forEach(el => el.remove());
 }
 
 // ===========================
