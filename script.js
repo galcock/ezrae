@@ -8,6 +8,7 @@
 // Backend API endpoint (Vercel deployment)
 // Deploy ezrae-backend to Vercel and update this URL
 const BACKEND_API_URL = 'https://ezrae-backend.vercel.app/api/chat';
+// Alternative: https://ezrae-backend-avt9cvmg3-garys-projects-3d21e618.vercel.app/api/chat
 // Fallback: Direct Claude API (not recommended - exposes key)
 const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
