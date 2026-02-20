@@ -224,15 +224,18 @@ function startListening() {
 let currentAudio = null;
 
 async function speakText(text) {
-    // Stop any currently playing audio (allows interruption)
+    console.log('speakText called with:', text.substring(0, 50) + '...');
+    
+    // Stop any currently playing audio
     if (currentAudio) {
         currentAudio.pause();
         currentAudio.currentTime = 0;
         currentAudio = null;
     }
     
-    // ALWAYS use ElevenLabs Brian voice for Jesus - never browser TTS
+    // ALWAYS use ElevenLabs Brian voice for Jesus
     try {
+        console.log('Calling ElevenLabs API...');
         const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
             method: 'POST',
             headers: {
@@ -251,15 +254,21 @@ async function speakText(text) {
             })
         });
         
+        console.log('ElevenLabs response status:', response.status);
+        
         if (response.ok) {
             const audioBlob = await response.blob();
+            console.log('Audio blob size:', audioBlob.size);
+            
             const audioUrl = URL.createObjectURL(audioBlob);
             currentAudio = new Audio(audioUrl);
+            currentAudio.volume = 1.0;
             
             currentAudio.onended = () => {
+                console.log('Audio playback ended');
                 URL.revokeObjectURL(audioUrl);
                 currentAudio = null;
-                // Resume listening after Jesus finishes speaking
+                // Resume listening after Jesus finishes
                 if (voiceEnabled && recognition) {
                     setTimeout(() => {
                         try { recognition.start(); } catch(e) {}
@@ -267,13 +276,34 @@ async function speakText(text) {
                 }
             };
             
-            // Play Jesus's response
-            await currentAudio.play();
+            currentAudio.onerror = (e) => {
+                console.error('Audio playback error:', e);
+                // Resume listening on error
+                if (voiceEnabled && recognition) {
+                    setTimeout(() => {
+                        try { recognition.start(); } catch(e) {}
+                    }, 500);
+                }
+            };
+            
+            // Play audio
+            try {
+                console.log('Attempting to play audio...');
+                await currentAudio.play();
+                console.log('Audio playing successfully');
+            } catch (playError) {
+                console.error('Audio play failed:', playError);
+                // Autoplay might be blocked - show message
+                addMessage('(Voice is ready but autoplay blocked. Click anywhere on the page to enable audio.)', 'system');
+            }
         } else {
-            console.error('ElevenLabs error:', await response.text());
+            const errorText = await response.text();
+            console.error('ElevenLabs API error:', response.status, errorText);
+            addMessage('(Voice unavailable - ' + response.status + ')', 'system');
         }
     } catch (error) {
         console.error('ElevenLabs TTS error:', error);
+        addMessage('(Voice connection error)', 'system');
     }
 }
 
@@ -572,6 +602,19 @@ document.addEventListener('DOMContentLoaded', () => {
         el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
         observer.observe(el);
     });
+    
+    // Unlock audio autoplay on first user interaction
+    let audioUnlocked = false;
+    const unlockAudio = () => {
+        if (audioUnlocked) return;
+        audioUnlocked = true;
+        // Create and play silent audio to unlock
+        const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+        silentAudio.play().catch(() => {});
+        console.log('Audio unlocked by user interaction');
+    };
+    document.addEventListener('click', unlockAudio, { once: true });
+    document.addEventListener('touchstart', unlockAudio, { once: true });
 });
 
 // ===========================
