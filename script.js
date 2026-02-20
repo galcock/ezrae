@@ -41,58 +41,40 @@ let synthesis = window.speechSynthesis;
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.continuous = true; // Keep listening
-    recognition.interimResults = true; // Show interim results for interruption
+    recognition.continuous = false; // Single utterance mode
+    recognition.interimResults = false; // Only final results
     recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
     
     recognition.onresult = (event) => {
-        const lastResult = event.results[event.results.length - 1];
-        const transcript = lastResult[0].transcript.trim();
-        const input = document.getElementById('chatInput');
+        const transcript = event.results[0][0].transcript.trim();
+        console.log('Heard:', transcript);
         
-        // INTERRUPT: Stop Jesus if user starts speaking
-        if (currentAudio && !currentAudio.paused) {
-            currentAudio.pause();
-            currentAudio.currentTime = 0;
-            currentAudio = null;
-        }
-        
-        // Update input field
-        if (input) input.value = transcript;
-        
-        // AUTO-SEND: When speech is final and we have text, send it directly
-        if (lastResult.isFinal && transcript.length > 0) {
-            // Stop recognition briefly while processing
-            try { recognition.stop(); } catch(e) {}
+        if (transcript.length > 0) {
+            // Stop any playing audio (interrupt Jesus)
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
             
-            // Clear input and send message directly
-            if (input) input.value = '';
-            
-            // Call sendMessage directly (bypass form)
+            // Send the message
             sendVoiceMessage(transcript);
         }
     };
     
     recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-            alert('Microphone access denied. Please allow microphone access to speak with Jesus.');
-            voiceEnabled = false;
-            const voiceToggle = document.getElementById('voiceToggle');
-            if (voiceToggle) voiceToggle.classList.remove('active');
+        console.log('Recognition error:', event.error);
+        // Restart on recoverable errors
+        if (voiceEnabled && event.error !== 'not-allowed' && event.error !== 'service-not-allowed') {
+            setTimeout(startListening, 500);
         }
     };
     
     recognition.onend = () => {
-        // Auto-restart if voice is still enabled
+        console.log('Recognition ended');
+        // Restart listening if voice mode is still on
         if (voiceEnabled) {
-            setTimeout(() => {
-                try {
-                    recognition.start();
-                } catch (e) {
-                    console.log('Recognition restart skipped');
-                }
-            }, 100);
+            setTimeout(startListening, 300);
         }
     };
 }
@@ -203,14 +185,22 @@ function toggleVoice() {
 }
 
 function startListening() {
-    if (recognition && voiceEnabled) {
-        try {
-            recognition.start();
-        } catch (e) {
-            // Recognition may already be started
-            console.log('Recognition already active');
+    if (!recognition || !voiceEnabled) return;
+    
+    // Stop any existing recognition first
+    try { recognition.stop(); } catch(e) {}
+    
+    // Start fresh after a brief delay
+    setTimeout(() => {
+        if (voiceEnabled) {
+            try {
+                recognition.start();
+                console.log('Listening...');
+            } catch (e) {
+                console.log('Could not start recognition:', e.message);
+            }
         }
-    }
+    }, 100);
 }
 
 // Note: recognition.onend is set in the recognition setup above
