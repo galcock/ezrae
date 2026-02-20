@@ -222,9 +222,12 @@ async function speakText(text) {
     
     try {
         console.log('Fetching TTS from backend...');
-        const response = await fetch(TTS_API_URL, {
+        // Add random param to prevent caching
+        const ttsUrl = TTS_API_URL + '&t=' + Date.now();
+        const response = await fetch(ttsUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
             body: JSON.stringify({ text: text })
         });
         
