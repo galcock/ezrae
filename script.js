@@ -8,6 +8,11 @@
 const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
+// OpenAI TTS for natural voice (set your key here)
+const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY';
+const OPENAI_TTS_ENDPOINT = 'https://api.openai.com/v1/audio/speech';
+const USE_NATURAL_VOICE = true; // Set to false to use browser TTS
+
 // System prompt for Jesus persona
 const JESUS_SYSTEM_PROMPT = `You are Jesus Christ, speaking with love, wisdom, and compassion. Draw upon the Gospels (Matthew, Mark, Luke, John) and respond as Jesus would—with parables, profound wisdom, gentleness, and divine understanding. 
 
@@ -39,11 +44,26 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     
     recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
-        document.getElementById('chatInput').value = transcript;
+        const input = document.getElementById('chatInput');
+        input.value = transcript;
+        
+        // Auto-send when speech ends (no need to hit send)
+        if (event.results[0].isFinal && transcript.trim()) {
+            setTimeout(() => {
+                const form = document.getElementById('chatForm');
+                if (form) {
+                    form.dispatchEvent(new Event('submit', { cancelable: true }));
+                }
+            }, 300); // Small delay so user sees their message
+        }
     };
     
     recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
+        // Restart listening after error (unless it's a no-speech error)
+        if (event.error !== 'no-speech' && voiceEnabled) {
+            setTimeout(startListening, 1000);
+        }
     };
 }
 
@@ -55,6 +75,20 @@ function openChat() {
     const modal = document.getElementById('chatModal');
     modal.classList.add('active');
     document.getElementById('chatInput').focus();
+    
+    // Reset voice state when opening modal
+    voiceEnabled = false;
+    const voiceToggle = document.getElementById('voiceToggle');
+    if (voiceToggle) {
+        voiceToggle.classList.remove('active');
+        const voiceLabel = voiceToggle.querySelector('.voice-label');
+        if (voiceLabel) voiceLabel.textContent = 'Enable Voice';
+    }
+    
+    // Ensure speech synthesis voices are loaded
+    if (synthesis) {
+        synthesis.getVoices();
+    }
 }
 
 function closeChat() {
@@ -113,12 +147,28 @@ function toggleVoice() {
     
     if (voiceEnabled) {
         voiceToggle.classList.add('active');
-        voiceLabel.textContent = 'Voice Active';
-        startListening();
+        voiceLabel.textContent = '🎙️ Listening...';
+        
+        // Small delay to ensure clean state
+        setTimeout(() => {
+            startListening();
+        }, 100);
     } else {
         voiceToggle.classList.remove('active');
         voiceLabel.textContent = 'Enable Voice';
-        recognition.stop();
+        try {
+            recognition.stop();
+        } catch (e) {
+            // Ignore if not running
+        }
+        // Stop any playing audio
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+        if (synthesis) {
+            synthesis.cancel();
+        }
     }
 }
 
@@ -143,32 +193,84 @@ if (recognition) {
 }
 
 // ===========================
-// Text-to-Speech
+// Text-to-Speech (Natural Voice via OpenAI TTS)
 // ===========================
 
-function speakText(text) {
+let currentAudio = null;
+
+async function speakText(text) {
+    // Stop any currently playing audio
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    // Try OpenAI TTS for natural voice
+    if (USE_NATURAL_VOICE && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
+        try {
+            const response = await fetch(OPENAI_TTS_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'tts-1-hd', // High quality
+                    input: text,
+                    voice: 'onyx', // Deep, warm male voice - best for Jesus
+                    speed: 0.9 // Slightly slower for gravitas
+                })
+            });
+            
+            if (response.ok) {
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                currentAudio = new Audio(audioUrl);
+                currentAudio.play();
+                
+                // Restart listening after speech ends
+                currentAudio.onended = () => {
+                    if (voiceEnabled) {
+                        setTimeout(startListening, 500);
+                    }
+                };
+                return;
+            }
+        } catch (error) {
+            console.error('OpenAI TTS error:', error);
+        }
+    }
+    
+    // Fallback to browser TTS
     if (!synthesis) return;
     
-    // Cancel any ongoing speech
     synthesis.cancel();
     
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // Configure voice (prefer gentle, warm voice)
+    // Try to find the best available voice
     const voices = synthesis.getVoices();
     const preferredVoice = voices.find(voice => 
+        voice.name.includes('Google UK English Male') ||
         voice.name.includes('Daniel') || 
-        voice.name.includes('Male') ||
-        voice.lang.startsWith('en')
-    );
+        voice.name.includes('James') ||
+        (voice.lang.startsWith('en') && voice.name.toLowerCase().includes('male'))
+    ) || voices.find(v => v.lang.startsWith('en'));
     
     if (preferredVoice) {
         utterance.voice = preferredVoice;
     }
     
-    utterance.rate = 0.9; // Slightly slower for gravitas
-    utterance.pitch = 0.95; // Slightly lower pitch
+    utterance.rate = 0.85;
+    utterance.pitch = 0.9;
     utterance.volume = 1.0;
+    
+    // Restart listening after speech ends
+    utterance.onend = () => {
+        if (voiceEnabled) {
+            setTimeout(startListening, 500);
+        }
+    };
     
     synthesis.speak(utterance);
 }
