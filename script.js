@@ -14,7 +14,7 @@ const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
 // TTS via backend proxy (ElevenLabs Brian voice)
-const TTS_API_URL = 'https://ezrae-backend-cwnksf9mj-garys-projects-3d21e618.vercel.app/api/speak';
+const TTS_API_URL = 'https://ezrae-backend.vercel.app/api/speak';
 
 // System prompt for Jesus persona
 const JESUS_SYSTEM_PROMPT = `You are Jesus Christ, speaking with love, wisdom, and compassion. Draw upon the Gospels (Matthew, Mark, Luke, John) and respond as Jesus would—with parables, profound wisdom, gentleness, and divine understanding. 
@@ -222,9 +222,12 @@ async function speakText(text) {
     
     try {
         console.log('Fetching TTS from backend...');
-        const response = await fetch(TTS_API_URL, {
+        // Add cache-busting param
+        const url = TTS_API_URL + '?_=' + Date.now();
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            mode: 'cors',
             body: JSON.stringify({ text: text })
         });
         
