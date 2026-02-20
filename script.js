@@ -13,10 +13,8 @@ const BACKEND_API_URL = 'https://ezrae-backend.vercel.app/api/chat';
 const CLAUDE_API_PLACEHOLDER = 'YOUR_CLAUDE_API_KEY';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
-// ElevenLabs TTS for natural voice
-const ELEVENLABS_API_KEY = 'sk_6f1f4d1c94f38f79e0298fc7d13bf5668e87243627f9c376';
-const ELEVENLABS_VOICE_ID = 'nPczCjzI2devNBz1zQrb'; // Brian - Deep, Resonant and Comforting
-const USE_NATURAL_VOICE = true;
+// TTS via backend proxy (ElevenLabs Brian voice)
+const TTS_API_URL = 'https://ezrae-backend.vercel.app/api/tts';
 
 // System prompt for Jesus persona
 const JESUS_SYSTEM_PROMPT = `You are Jesus Christ, speaking with love, wisdom, and compassion. Draw upon the Gospels (Matthew, Mark, Luke, John) and respond as Jesus would—with parables, profound wisdom, gentleness, and divine understanding. 
@@ -224,7 +222,7 @@ function startListening() {
 let currentAudio = null;
 
 async function speakText(text) {
-    console.log('speakText called with:', text.substring(0, 50) + '...');
+    console.log('speakText called');
     
     // Stop any currently playing audio
     if (currentAudio) {
@@ -233,39 +231,23 @@ async function speakText(text) {
         currentAudio = null;
     }
     
-    // ALWAYS use ElevenLabs Brian voice for Jesus
+    // Use backend TTS proxy (ElevenLabs Brian voice)
     try {
-        console.log('Calling ElevenLabs API...');
-        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+        const response = await fetch(TTS_API_URL, {
             method: 'POST',
             headers: {
-                'xi-api-key': ELEVENLABS_API_KEY,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                text: text,
-                model_id: 'eleven_turbo_v2_5',
-                voice_settings: {
-                    stability: 0.65,
-                    similarity_boost: 0.9,
-                    style: 0.35,
-                    use_speaker_boost: true
-                }
-            })
+            body: JSON.stringify({ text: text })
         });
-        
-        console.log('ElevenLabs response status:', response.status);
         
         if (response.ok) {
             const audioBlob = await response.blob();
-            console.log('Audio blob size:', audioBlob.size);
-            
             const audioUrl = URL.createObjectURL(audioBlob);
             currentAudio = new Audio(audioUrl);
             currentAudio.volume = 1.0;
             
             currentAudio.onended = () => {
-                console.log('Audio playback ended');
                 URL.revokeObjectURL(audioUrl);
                 currentAudio = null;
                 // Resume listening after Jesus finishes
@@ -277,8 +259,7 @@ async function speakText(text) {
             };
             
             currentAudio.onerror = (e) => {
-                console.error('Audio playback error:', e);
-                // Resume listening on error
+                console.error('Audio error:', e);
                 if (voiceEnabled && recognition) {
                     setTimeout(() => {
                         try { recognition.start(); } catch(e) {}
@@ -286,24 +267,12 @@ async function speakText(text) {
                 }
             };
             
-            // Play audio
-            try {
-                console.log('Attempting to play audio...');
-                await currentAudio.play();
-                console.log('Audio playing successfully');
-            } catch (playError) {
-                console.error('Audio play failed:', playError);
-                // Autoplay might be blocked - show message
-                addMessage('(Voice is ready but autoplay blocked. Click anywhere on the page to enable audio.)', 'system');
-            }
+            await currentAudio.play();
         } else {
-            const errorText = await response.text();
-            console.error('ElevenLabs API error:', response.status, errorText);
-            addMessage('(Voice unavailable - ' + response.status + ')', 'system');
+            console.error('TTS error:', response.status);
         }
     } catch (error) {
-        console.error('ElevenLabs TTS error:', error);
-        addMessage('(Voice connection error)', 'system');
+        console.error('TTS error:', error);
     }
 }
 
