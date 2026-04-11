@@ -485,25 +485,49 @@ function handleJoinSubmit(event) {
     event.preventDefault();
     const form = event.target;
     const email = form.querySelector('input[type="email"]').value;
-    
-    // In production, this would send to your backend
-    console.log('Join submission:', email);
-    
+
+    // Send to central webhook
+    fetch('https://alcock.ai/api/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site: 'ezrae.ai', type: 'email_subscribe', email: email })
+    }).catch(() => {});
+
     // Show success message
-    alert('Welcome to Ezrae! Check your email for next steps on your spiritual journey.');
+    const btn = form.querySelector('button');
+    btn.textContent = 'Welcome ✓';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = 'Begin Your Journey'; btn.disabled = false; }, 3000);
     form.reset();
 }
 
 function handlePartnerSubmit(event) {
     event.preventDefault();
     const form = event.target;
-    
-    // In production, this would send to your backend
-    console.log('Partner form submitted');
-    
-    // Show success message
-    alert('Thank you for your interest in sustaining the mission. We will reach out to you shortly at the email provided.');
-    
+    const inputs = form.querySelectorAll('input');
+    const name = inputs[0]?.value || '';
+    const email = inputs[1]?.value || '';
+    const org = inputs[2]?.value || '';
+    const select = form.querySelector('select');
+    const partnerType = select?.value || '';
+    const textarea = form.querySelector('textarea');
+    const message = textarea?.value || '';
+
+    // Send to central webhook
+    fetch('https://alcock.ai/api/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            site: 'ezrae.ai',
+            type: 'application',
+            name: name,
+            email: email,
+            message: message,
+            data: { organization: org, partnerType: partnerType }
+        })
+    }).catch(() => {});
+
+    alert('Thank you for your interest in sustaining the mission. We will reach out to you shortly.');
     closePartnerModal();
     form.reset();
 }
